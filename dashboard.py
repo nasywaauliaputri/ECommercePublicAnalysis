@@ -1,18 +1,22 @@
 import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
+import plotly.express as px
 
-st.set_page_config(
-    page_title="E-Commerce Dashboard",
-    layout="wide",
-    page_icon="📊"
-)
+st.set_page_config(page_title="E-Commerce Dashboard", layout="wide", page_icon="📊")
 
 # ===============================
-# HEADER
+# STYLE (biar lebih clean)
 # ===============================
-st.title("📊 E-Commerce Performance Dashboard")
-st.markdown("Analisis tren order, metode pembayaran, dan kinerja pengiriman")
+st.markdown("""
+<style>
+.metric-card {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ===============================
 # LOAD DATA
@@ -21,8 +25,6 @@ st.markdown("Analisis tren order, metode pembayaran, dan kinerja pengiriman")
 def load_data():
     orders = pd.read_csv("orders_dataset.csv", parse_dates=[
         'order_purchase_timestamp',
-        'order_approved_at',
-        'order_delivered_carrier_date',
         'order_delivered_customer_date',
         'order_estimated_delivery_date'
     ])
@@ -32,12 +34,16 @@ def load_data():
 df = load_data()
 
 # ===============================
-# SIDEBAR
+# HEADER
 # ===============================
-st.sidebar.header("📌 Filter")
+st.title("📊 E-Commerce Dashboard")
+st.caption("Insight bisnis berbasis data")
 
-date_range = st.sidebar.date_input(
-    "Pilih Rentang Waktu",
+# ===============================
+# FILTER
+# ===============================
+date_range = st.date_input(
+    "Filter Tanggal",
     [df['order_purchase_timestamp'].min(), df['order_purchase_timestamp'].max()]
 )
 
@@ -47,79 +53,96 @@ df = df[
 ]
 
 # ===============================
-# METRICS
+# KPI CARDS
 # ===============================
-st.subheader("📌 Key Metrics")
+total_orders = df['order_id'].nunique()
+total_revenue = df['payment_value'].sum()
+avg_order = df['payment_value'].mean()
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Total Orders", f"{df['order_id'].nunique():,}")
-col2.metric("Total Revenue", f"${df['payment_value'].sum():,.0f}")
-col3.metric("Avg Transaction", f"${df['payment_value'].mean():,.2f}")
-
-st.markdown("---")
+col1.metric("🛒 Total Orders", f"{total_orders:,}")
+col2.metric("💰 Revenue", f"${total_revenue:,.0f}")
+col3.metric("📦 Avg Order", f"${avg_order:,.2f}")
 
 # ===============================
-# TREN ORDER
+# TABS
 # ===============================
-st.subheader("📈 Tren Order Bulanan")
-
-df['month'] = df['order_purchase_timestamp'].dt.to_period('M')
-trend = df.groupby('month')['order_id'].nunique()
-
-fig, ax = plt.subplots()
-trend.plot(ax=ax)
-ax.set_title("Monthly Orders")
-st.pyplot(fig)
+tab1, tab2, tab3 = st.tabs(["📈 Tren Order", "💳 Payment", "🚚 Delivery"])
 
 # ===============================
-# PAYMENT
+# TAB 1: TREN ORDER
 # ===============================
-st.subheader("💳 Analisis Pembayaran")
+with tab1:
+    df['month'] = df['order_purchase_timestamp'].dt.to_period('M').astype(str)
+    trend = df.groupby('month')['order_id'].nunique().reset_index()
 
-col1, col2 = st.columns(2)
+    fig = px.line(trend, x='month', y='order_id', title="Tren Order per Bulan")
+    st.plotly_chart(fig, use_container_width=True)
 
-payment_count = df['payment_type'].value_counts()
-payment_revenue = df.groupby('payment_type')['payment_value'].sum()
-
-with col1:
-    st.markdown("**Frekuensi Penggunaan**")
-    fig, ax = plt.subplots()
-    payment_count.plot(kind='bar', ax=ax)
-    st.pyplot(fig)
-
-with col2:
-    st.markdown("**Revenue per Metode**")
-    fig, ax = plt.subplots()
-    payment_revenue.plot(kind='bar', ax=ax)
-    st.pyplot(fig)
-
-st.markdown("---")
+    # Insight otomatis
+    growth = trend['order_id'].pct_change().mean() * 100
+    st.info(f"📌 Rata-rata pertumbuhan order: {growth:.2f}%")
 
 # ===============================
-# DELIVERY
+# TAB 2: PAYMENT
 # ===============================
-st.subheader("🚚 Kinerja Pengiriman")
+with tab2:
+    payment_count = df['payment_type'].value_counts().reset_index()
+    payment_count.columns = ['payment_type', 'count']
 
-df_del = df[df['order_status'] == 'delivered'].copy()
+    payment_rev = df.groupby('payment_type')['payment_value'].sum().reset_index()
 
-df_del['delivery_time'] = (
-    df_del['order_delivered_customer_date'] - 
-    df_del['order_purchase_timestamp']
-).dt.days
+    col1, col2 = st.columns(2)
 
-df_del['delay'] = (
-    df_del['order_delivered_customer_date'] - 
-    df_del['order_estimated_delivery_date']
-).dt.days
+    with col1:
+        fig = px.bar(payment_count, x='payment_type', y='count', title="Frekuensi Payment")
+        st.plotly_chart(fig, use_container_width=True)
 
-col1, col2 = st.columns(2)
-col1.metric("Avg Delivery (days)", round(df_del['delivery_time'].mean(), 2))
-col2.metric("Avg Delay (days)", round(df_del['delay'].mean(), 2))
+    with col2:
+        fig = px.bar(payment_rev, x='payment_type', y='payment_value', title="Revenue per Payment")
+        st.plotly_chart(fig, use_container_width=True)
+
+    top_method = payment_rev.sort_values(by='payment_value', ascending=False).iloc[0]['payment_type']
+    st.info(f"📌 Metode paling menguntungkan: {top_method}")
 
 # ===============================
-# RFM
+# TAB 3: DELIVERY
 # ===============================
-st.subheader("👥 Customer Segmentation (RFM)")
+with tab3:
+    df_del = df[df['order_status'] == 'delivered'].copy()
+
+    df_del['delivery_time'] = (
+        df_del['order_delivered_customer_date'] - 
+        df_del['order_purchase_timestamp']
+    ).dt.days
+
+    df_del['delay'] = (
+        df_del['order_delivered_customer_date'] - 
+        df_del['order_estimated_delivery_date']
+    ).dt.days
+
+    col1, col2 = st.columns(2)
+    col1.metric("⏱ Avg Delivery", round(df_del['delivery_time'].mean(), 2))
+    col2.metric("⚠ Avg Delay", round(df_del['delay'].mean(), 2))
+
+    # kategori delay
+    df_del['category'] = df_del['delay'].apply(
+        lambda x: 'On Time' if x <= 0 else 'Late'
+    )
+
+    delay_dist = df_del['category'].value_counts().reset_index()
+    delay_dist.columns = ['category', 'count']
+
+    fig = px.pie(delay_dist, names='category', values='count', title="Distribusi Pengiriman")
+    st.plotly_chart(fig, use_container_width=True)
+
+    late_pct = (df_del['delay'] > 0).mean() * 100
+    st.info(f"📌 Persentase keterlambatan: {late_pct:.2f}%")
+
+# ===============================
+# RFM (bonus section)
+# ===============================
+st.markdown("## 👥 Customer Segmentation (RFM)")
 
 latest = df['order_purchase_timestamp'].max()
 
@@ -141,11 +164,11 @@ rfm['segment'] = rfm['score'].apply(
     lambda x: 'High Value' if x >= 10 else 'Medium Value' if x >= 6 else 'Low Value'
 )
 
-seg = rfm['segment'].value_counts()
+seg = rfm['segment'].value_counts().reset_index()
+seg.columns = ['segment', 'count']
 
-fig, ax = plt.subplots()
-seg.plot(kind='bar', ax=ax)
-st.pyplot(fig)
+fig = px.bar(seg, x='segment', y='count', title="Distribusi Customer Segment")
+st.plotly_chart(fig, use_container_width=True)
 
-st.markdown("---")
-st.caption("Dashboard by Streamlit 🚀")
+top_segment = seg.sort_values(by='count', ascending=False).iloc[0]['segment']
+st.success(f"🎯 Mayoritas customer berada di segmen: {top_segment}")
