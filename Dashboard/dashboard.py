@@ -159,7 +159,7 @@ fig4 = px.histogram(data_hist, x='delivery_time', nbins=30, color_discrete_seque
 st.plotly_chart(fig4, use_container_width=True)
 
 # =====================================================
-# 4. RFM ANALYSIS
+# 4. RFM ANALYSIS (ROBUST VERSION)
 # =====================================================
 st.header("📊 4. RFM Analysis")
 
@@ -173,20 +173,31 @@ rfm = data.groupby('customer_id').agg({
 
 rfm.columns = ['Recency', 'Frequency', 'Monetary']
 
+def safe_qcut(series, q):
+    """qcut yang aman untuk data dengan duplikasi, fallback otomatis."""
+    try:
+        return pd.qcut(series, q, labels=range(1, q+1), duplicates='drop')
+    except ValueError:
+        # coba q-1
+        try:
+            return pd.qcut(series, q-1, labels=range(1, q), duplicates='drop')
+        except ValueError:
+            # fallback 2 bin
+            return pd.qcut(series, 2, labels=[1,2], duplicates='drop')
+
 if rfm.shape[0] < 4:
     st.warning("Data terlalu sedikit untuk RFM analysis")
 else:
-    rfm['R_Score'] = pd.qcut(rfm['Recency'], 4, labels=[4,3,2,1], duplicates='drop')
-    rfm['F_Score'] = pd.qcut(rfm['Frequency'], 4, labels=[1,2,3,4], duplicates='drop')
-    rfm['M_Score'] = pd.qcut(rfm['Monetary'], 4, labels=[1,2,3,4], duplicates='drop')
+    rfm['R_Score'] = safe_qcut(rfm['Recency'], 4)
+    rfm['F_Score'] = safe_qcut(rfm['Frequency'], 4)
+    rfm['M_Score'] = safe_qcut(rfm['Monetary'], 4)
 
     rfm['Segment'] = rfm['R_Score'].astype(str) + rfm['F_Score'].astype(str)
 
     st.dataframe(rfm.head())
 
-    fig5 = px.bar(rfm['Segment'].value_counts().head(10))
+    fig5 = px.bar(rfm['Segment'].value_counts())
     fig5.update_traces(marker_color=ORANGE)
-
     st.plotly_chart(fig5, use_container_width=True)
 
 # =====================================================
