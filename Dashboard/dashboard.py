@@ -16,7 +16,7 @@ st.set_page_config(page_title="E-Commerce Dashboard", layout="wide")
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv("cleaned_merged_data.csv")
+        df = pd.read_csv("Dashboard/cleaned_merged_data.csv")
     except FileNotFoundError:
         st.error("File cleaned_merged_data.csv tidak ditemukan!")
         st.stop()
