@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 
 # =====================
 # THEME (KUNING-ORANGE)
@@ -53,26 +55,32 @@ year_filter = st.sidebar.multiselect(
 
 data = df[df['year'].isin(year_filter)]
 
-st.title("📊 E-Commerce Advanced Dashboard")
+st.title("📊 E-Commerce Advanced Dashboard (Interactive)")
 
 # =====================================================
-# 1. TREND ORDER
+# 1. TREND ORDER (PLOTLY)
 # =====================================================
-st.header("📦 1. Tren Jumlah Pesanan")
+st.header("📦 1. Tren Jumlah Pesanan (Interactive Plotly)")
 
 trend = data.groupby('month')['order_id'].nunique().reset_index()
-trend.columns = ['month', 'total_orders']
+trend['month'] = trend['month'].astype(str)
 
-fig, ax = plt.subplots()
-ax.plot(trend['month'].astype(str), trend['total_orders'], color=ORANGE, linewidth=2)
-ax.set_title("Tren Order per Bulan")
-plt.xticks(rotation=45)
-st.pyplot(fig)
+fig = px.line(
+    trend,
+    x="month",
+    y="total_orders",
+    title="Tren Order per Bulan",
+    markers=True
+)
+fig.update_traces(line=dict(color=ORANGE, width=3))
+fig.update_layout(xaxis_title="Month", yaxis_title="Total Orders")
+
+st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
-# 2. PAYMENT ANALYSIS
+# 2. PAYMENT ANALYSIS (PLOTLY)
 # =====================================================
-st.header("💳 2. Metode Pembayaran")
+st.header("💳 2. Metode Pembayaran (Interactive Plotly)")
 
 payment = data.groupby('payment_type').agg({
     'order_id': 'count',
@@ -82,18 +90,24 @@ payment = data.groupby('payment_type').agg({
 col1, col2 = st.columns(2)
 
 with col1:
-    fig1, ax1 = plt.subplots()
-    sns.barplot(data=payment, x='payment_type', y='payment_value', ax=ax1, color=YELLOW)
-    ax1.set_title("Revenue per Payment Type")
-    plt.xticks(rotation=30)
-    st.pyplot(fig1)
+    fig1 = px.bar(
+        payment,
+        x='payment_type',
+        y='payment_value',
+        title="Revenue per Payment Type",
+        color='payment_type'
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
 with col2:
-    fig2, ax2 = plt.subplots()
-    sns.barplot(data=payment, x='payment_type', y='order_id', ax=ax2, color=ORANGE)
-    ax2.set_title("Transaction Count")
-    plt.xticks(rotation=30)
-    st.pyplot(fig2)
+    fig2 = px.bar(
+        payment,
+        x='payment_type',
+        y='order_id',
+        title="Transaction Count",
+        color='payment_type'
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 
 # =====================================================
 # 3. DELIVERY PERFORMANCE
@@ -118,13 +132,17 @@ col3.metric("Rata-rata Delivery Time", round(data['delivery_time'].mean(), 2))
 col4.metric("Rata-rata Delay", round(data['delay'].mean(), 2))
 col5.metric("Tingkat Keterlambatan (%)", round(data['is_late'].mean() * 100, 2))
 
-fig3, ax3 = plt.subplots()
-ax3.hist(data['delivery_time'].dropna(), bins=30, color=YELLOW)
-ax3.set_title("Distribusi Delivery Time")
-st.pyplot(fig3)
+fig3 = px.histogram(
+    data,
+    x="delivery_time",
+    nbins=30,
+    title="Distribusi Delivery Time",
+    color_discrete_sequence=[YELLOW]
+)
+st.plotly_chart(fig3, use_container_width=True)
 
 # =====================================================
-# 4. RFM ANALYSIS
+# 4. RFM ANALYSIS (STATIC)
 # =====================================================
 st.header("📊 4. RFM Analysis")
 
@@ -138,23 +156,25 @@ rfm = data.groupby('customer_id').agg({
 
 rfm.columns = ['Recency', 'Frequency', 'Monetary']
 
-# Mengatasi error qcut pada data duplikat
+# Mengatasi error qcut
 rfm['R_Score'] = pd.qcut(rfm['Recency'], 4, labels=[4, 3, 2, 1], duplicates='drop')
 rfm['F_Score'] = pd.qcut(rfm['Frequency'], 4, labels=[1, 2, 3, 4], duplicates='drop')
 rfm['M_Score'] = pd.qcut(rfm['Monetary'], 4, labels=[1, 2, 3, 4], duplicates='drop')
 
 rfm['Segment'] = rfm['R_Score'].astype(str) + rfm['F_Score'].astype(str)
 
-st.subheader("Contoh Data RFM")
 st.dataframe(rfm.head())
 
-fig4, ax4 = plt.subplots()
-rfm['Segment'].value_counts().head(10).plot(kind='bar', color=ORANGE, ax=ax4)
-ax4.set_title("Top RFM Segments")
-st.pyplot(fig4)
+fig4 = px.bar(
+    rfm['Segment'].value_counts().head(10),
+    title="Top RFM Segments",
+    labels={'value': 'Count', 'index': 'Segment'}
+)
+fig4.update_traces(marker_color=ORANGE)
+st.plotly_chart(fig4, use_container_width=True)
 
 # =====================================================
-# 5. DELAY SEGMENTATION
+# 5. DELAY SEGMENTATION (PLOTLY)
 # =====================================================
 st.header("⏱ 5. Segmentasi Delay")
 
@@ -164,19 +184,25 @@ data['delay_segment'] = pd.cut(
     labels=['Early/On Time', 'Slight Delay', 'Moderate Delay', 'Severe Delay']
 )
 
-fig5, ax5 = plt.subplots()
-data['delay_segment'].value_counts().plot(kind='bar', color=YELLOW, ax=ax5)
-ax5.set_title("Segmentasi Keterlambatan Pengiriman")
-st.pyplot(fig5)
+fig5 = px.bar(
+    data['delay_segment'].value_counts(),
+    title="Segmentasi Keterlambatan Pengiriman",
+    labels={'index': 'Segment', 'value': 'Count'}
+)
+fig5.update_traces(marker_color=YELLOW)
+st.plotly_chart(fig5, use_container_width=True)
 
 # =====================================================
-# 6. CUSTOMER INSIGHT
+# 6. CUSTOMER INSIGHT (PLOTLY)
 # =====================================================
 st.header("👥 6. Customer Insight")
 
 top_customers = data.groupby('customer_id')['payment_value'].sum().sort_values(ascending=False).head(10)
 
-fig6, ax6 = plt.subplots()
-top_customers.plot(kind='bar', color=ORANGE, ax=ax6)
-ax6.set_title("Top 10 Customers by Revenue")
-st.pyplot(fig6)
+fig6 = px.bar(
+    top_customers,
+    title="Top 10 Customers by Revenue",
+    labels={'index': 'Customer ID', 'value': 'Revenue'}
+)
+fig6.update_traces(marker_color=ORANGE)
+st.plotly_chart(fig6, use_container_width=True)
