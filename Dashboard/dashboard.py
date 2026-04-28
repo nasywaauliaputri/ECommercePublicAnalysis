@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sklearn.cluster import KMeans
+import numpy as np
 
 # =====================
 # CONFIG
@@ -173,24 +175,34 @@ rfm = data.groupby('customer_id').agg({
 
 rfm.columns = ['Recency', 'Frequency', 'Monetary']
 
-def safe_qcut(series, q):
-    """qcut yang aman untuk data dengan duplikasi, fallback otomatis."""
-    try:
-        return pd.qcut(series, q, labels=range(1, q+1), duplicates='drop')
-    except ValueError:
-        # coba q-1
-        try:
-            return pd.qcut(series, q-1, labels=range(1, q), duplicates='drop')
-        except ValueError:
-            # fallback 2 bin
-            return pd.qcut(series, 2, labels=[1,2], duplicates='drop')
+def kmeans_binning(series, n_clusters=4):
+    """Binning aman pakai KMeans (selalu berhasil, anti-qcut error)."""
+    x = series.values.reshape(-1,1)
+
+    # jumlah cluster tidak boleh > jumlah data unik
+    unique_vals = np.unique(x)
+
+    if len(unique_vals) == 1:
+        # semua nilai sama → kasih 1 cluster saja
+        return pd.Series([1] * len(series), index=series.index)
+
+    k = min(n_clusters, len(unique_vals))
+
+    km = KMeans(n_clusters=k, n_init=10, random_state=42)
+    cluster_labels = km.fit_predict(x)
+
+    # urutkan cluster berdasarkan mean value
+    order = np.argsort(km.cluster_centers_.flatten())
+    mapping = {old: new+1 for new, old in enumerate(order)}
+
+    return pd.Series(cluster_labels).map(mapping).values
 
 if rfm.shape[0] < 4:
     st.warning("Data terlalu sedikit untuk RFM analysis")
 else:
-    rfm['R_Score'] = safe_qcut(rfm['Recency'], 4)
-    rfm['F_Score'] = safe_qcut(rfm['Frequency'], 4)
-    rfm['M_Score'] = safe_qcut(rfm['Monetary'], 4)
+    rfm['R_Score'] = kmeans_binning(rfm['Recency'], 4)
+    rfm['F_Score'] = kmeans_binning(rfm['Frequency'], 4)
+    rfm['M_Score'] = kmeans_binning(rfm['Monetary'], 4)
 
     rfm['Segment'] = rfm['R_Score'].astype(str) + rfm['F_Score'].astype(str)
 
